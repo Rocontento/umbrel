@@ -8,5 +8,5 @@ export default async function isUmbrelHome() {
 
 	const {manufacturer, model} = await systeminfo.system()
 
-	return manufacturer === 'Umbrel, Inc.' && model === 'Umbrel Home'
+	return manufacturer === 'Apple Inc.' && model === 'Macmini7,1'
 }
