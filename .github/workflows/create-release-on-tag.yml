@@ -19,8 +19,8 @@ jobs:
       - run: echo "VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
       # We need this to namespace Docker images on forks
       - run: echo "VERSION_IS_SEMVER=$(if [[ '${{ env.VERSION }}' =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then echo 'true'; else echo 'false'; fi)" >> $GITHUB_ENV
-      - run: echo "PREFIX=$(if [ '${{ env.VERSION_IS_SEMVER }}' = 'true' ]; then echo ''; else echo $(basename ${{ github.repository }})-; fi)" >> $GITHUB_ENV
-      - run: echo "TAG=${{ github.repository_owner }}/${{ env.PREFIX }}umbrelos:${{ env.VERSION }}" >> $GITHUB_ENV
+      - run: echo "PREFIX=$(if [ '${{ env.VERSION_IS_SEMVER }}' = 'true' ]; then echo ''; else echo $(basename ${{ github.repository }} | tr '[:upper:]' '[:lower:]')-; fi)" >> $GITHUB_ENV
+      - run: echo "TAG=$(echo ${{ github.repository_owner }}/${{ env.PREFIX }}umbrelos:${{ env.VERSION }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
       - run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
       - run: docker buildx create --use
       - run: docker buildx build --platform linux/amd64,linux/arm64 --file umbrelos.Dockerfile --tag ghcr.io/${{env.TAG }} --push ../../
