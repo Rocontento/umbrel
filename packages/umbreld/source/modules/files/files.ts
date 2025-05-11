@@ -771,7 +771,7 @@ export default class Files {
 		}
 
 		// Unshareable paths
-		const isUnshareable = match(virtualPath, ['/Apps', '/Apps/*', '/External', '/External/**'])
+		const isUnshareable = match(virtualPath, ['/Apps', '/Apps/*'])
 		if (isUnshareable) operations.delete('share')
 
 		// External files (not external root or top level mount points)
