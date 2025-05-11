@@ -1,3 +1,4 @@
+import {useEffect, useRef} from 'react'
 import {toast} from 'sonner'
 
 import {useListDirectory} from '@/features/files/hooks/use-list-directory'
@@ -8,31 +9,54 @@ import {trpcReact} from '@/trpc/trpc'
 import {t} from '@/utils/i18n'
 
 export function useNewFolder() {
-	const trpc = trpcReact.useContext()
+	const utils = trpcReact.useUtils()
 	const {currentPath} = useNavigate()
 	const {listing} = useListDirectory(currentPath)
 	const setNewFolder = useFilesStore((s) => s.setNewFolder)
 	const setSelectedItems = useFilesStore((s) => s.setSelectedItems)
 
+	// These refs maintain a stable reference to the latest values of currentPath and listing.
+	// This ensures that when startNewFolder is called, it will always have access to the
+	// most up-to-date values for accurate folder creation and name validation.
+	const currentPathRef = useRef(currentPath)
+	const listingRef = useRef(listing)
+
+	// keep the ref updated with the latest currentPath
+	useEffect(() => {
+		currentPathRef.current = currentPath
+	}, [currentPath])
+
+	// keep the ref updated with the latest listing
+	useEffect(() => {
+		listingRef.current = listing
+	}, [listing])
+
 	const createFolder = trpcReact.files.createDirectory.useMutation({
-		onMutate: ({name}: {name: FileSystemItem['name']}) => {
-			if (listing?.items) {
-				checkForDuplicateName(name, listing.items)
+		onMutate: ({path}: {path: FileSystemItem['path']}) => {
+			if (listingRef.current?.items) {
+				// Extract name from path
+				const name = path.split('/').pop() || ''
+				// Best-effort check for duplicate name
+				if (!isNameAvailable(name, listingRef.current.items)) {
+					throw new Error('A folder with this name already exists')
+				}
 			}
 		},
-		onSuccess: (_, {path, name}: {path: FileSystemItem['path']; name: FileSystemItem['name']}) => {
+		onSuccess: (_, {path}: {path: FileSystemItem['path']}) => {
 			setNewFolder(null)
+
+			// Extract name from path
+			const name = path.split('/').pop() || ''
 
 			// Set the new folder as selected
 			setSelectedItems([
 				{
 					name,
-					path: `${path}/${name}`,
+					path,
 					type: 'directory',
-					ops: 0,
 					size: 0,
-					created: new Date().toISOString(),
-					modified: new Date().toISOString(),
+					modified: new Date().getTime(),
+					operations: [],
 				},
 			])
 		},
@@ -40,37 +64,37 @@ export function useNewFolder() {
 			toast.error(t('files-error.create-folder', {message: error.message}))
 		},
 		onSettled: () => {
-			trpc.files.list.invalidate()
+			utils.files.list.invalidate()
 		},
 	})
 
-	// TODO: remove or redo this since we can't check for duplicate names across all pages
-	const getNextAvailableName = () => {
-		const existingNames = new Set(listing?.items.map((item) => item.name) ?? [])
-		const baseName = t('files-folder')
-
-		if (!existingNames.has(baseName)) {
-			return baseName
+	// NOTE: We can't reliably calculate the "next available name"
+	// with infinite loading, as we don't have the full list of existing names.
+	// So, we just check against the currently loaded items and start with the base name (e.g., "Folder").
+	// and keep incrementing the index until we find an available name.
+	// (e.g., "Folder (2)", "Folder (3)", etc.)
+	const startNewFolder = async () => {
+		let name = t('files-folder')
+		if (listingRef.current?.items) {
+			// Check if the base name already exists
+			if (!isNameAvailable(name, listingRef.current.items)) {
+				// If it does, find the next available name
+				let index = 2
+				while (!isNameAvailable(`${name} (${index})`, listingRef.current.items)) {
+					index++
+				}
+				name = `${name} (${index})`
+			}
 		}
 
-		let index = 2
-		while (existingNames.has(`${baseName} (${index})`)) {
-			index++
-		}
-		return `${baseName} (${index})`
-	}
-
-	const startNewFolder = () => {
-		const name = getNextAvailableName()
-		const timeStamp = new Date().toISOString()
+		const timeStamp = new Date().getTime()
 		const newFolder = {
 			name,
-			path: currentPath + '/' + name,
+			path: currentPathRef.current + '/' + name,
 			type: 'directory',
 			size: 0,
-			ops: 0,
-			created: timeStamp,
 			modified: timeStamp,
+			operations: [],
 			isNew: true,
 		}
 		setNewFolder(newFolder)
@@ -86,16 +110,15 @@ export function useNewFolder() {
 		createFolder,
 		startNewFolder,
 		cancelNewFolder,
-		isLoading: createFolder.isLoading,
+		isLoading: createFolder.isPending,
 	}
 }
 
-// We throw an error if the name is already taken, but don't need to do any cleanup.
-// umbreld handles the cleanup of the folder.
-// We need to throw an error here because umbreld silently fails on EEXIST error.
-function checkForDuplicateName(name: string, existingItems: FileSystemItem[]) {
+// This is a best-effort check as it only compares against the currently loaded items.
+// umbreld still returns true if EEXIST, but doesn't create the folder.
+// So even if we don't throw an error here, umbreld will still handle the duplicate name.
+// But when we do throw an error, the user will see a toast
+function isNameAvailable(name: string, existingItems: FileSystemItem[]) {
 	const existingNames = new Set(existingItems.map((item) => item.name))
-	if (existingNames.has(name)) {
-		throw new Error('A folder with this name already exists')
-	}
+	return !existingNames.has(name)
 }

@@ -1,19 +1,21 @@
-import {useSearchParams} from 'react-router-dom'
+import {useEffect} from 'react'
 
 import {Listing} from '@/features/files/components/listing'
-import {ITEMS_PER_PAGE} from '@/features/files/constants'
+import {useSetActionsBarConfig} from '@/features/files/components/listing/actions-bar/actions-bar-context'
 import {useListDirectory} from '@/features/files/hooks/use-list-directory'
 import {useNavigate} from '@/features/files/hooks/use-navigate'
 
 export function AppsListing() {
-	const [searchParams] = useSearchParams()
-	const currentPage = parseInt(searchParams.get('page') || '1')
 	const {currentPath} = useNavigate()
+	const setActionsBarConfig = useSetActionsBarConfig()
+	const {listing, isLoading, error, fetchMoreItems} = useListDirectory(currentPath)
 
-	const {listing, isLoading, error} = useListDirectory(currentPath, {
-		start: (currentPage - 1) * ITEMS_PER_PAGE,
-		count: ITEMS_PER_PAGE,
-	})
+	useEffect(() => {
+		setActionsBarConfig({
+			hidePath: !!error,
+			hideSearch: true,
+		})
+	}, [error])
 
 	return (
 		<Listing
@@ -21,8 +23,11 @@ export function AppsListing() {
 			selectableItems={listing?.items ?? []}
 			isLoading={isLoading}
 			error={error}
-			totalItems={listing?.total ?? 0}
+			hasMore={listing?.hasMore ?? false}
+			onLoadMore={fetchMoreItems}
 			enableFileDrop={false}
+			totalItems={listing?.totalFiles}
+			truncatedAt={listing?.truncatedAt}
 		/>
 	)
 }

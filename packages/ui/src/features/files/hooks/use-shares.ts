@@ -1,3 +1,4 @@
+import {keepPreviousData} from '@tanstack/react-query'
 import {toast} from 'sonner'
 
 import {HOME_PATH} from '@/features/files/constants'
@@ -11,33 +12,27 @@ import {t} from '@/utils/i18n'
  * Provides functionality to fetch shares, add/remove shares, and get share password.
  */
 export function useShares() {
-	const utils = trpcReact.useContext()
+	const utils = trpcReact.useUtils()
 
 	// Query to fetch all shares
 	const {data: shares, isLoading: isLoadingShares} = trpcReact.files.shares.useQuery(undefined, {
-		keepPreviousData: true,
+		placeholderData: keepPreviousData,
 		staleTime: 60_000, // Cache for 1 minute
-		onError: (error: RouterError) => {
-			console.error('Failed to fetch shares:', error)
-		},
 	})
 
 	// Check if item is shared
-	const isPathShared = (path: string) => shares?.some((share: Share) => share.path === path)
+	const isPathShared = (path: string) => shares?.some((share: Share) => share && share.path === path)
 
 	// Check if the entire home directory is shared
-	const isHomeShared = () => shares?.some((share: Share) => share.path === HOME_PATH)
+	const isHomeShared = () => shares?.some((share: Share) => share && share.path === HOME_PATH)
 
 	// Query to get share password
 	const {data: sharePassword, isLoading: isLoadingSharesPassword} = trpcReact.files.sharePassword.useQuery(undefined, {
 		staleTime: Infinity, // Cache indefinitely until browser refresh
-		onError: (error: RouterError) => {
-			console.error('Failed to fetch share password:', error)
-		},
 	})
 
 	// Add share mutation
-	const {mutateAsync: addShare, isLoading: isAddingShare} = trpcReact.files.share.useMutation({
+	const {mutateAsync: addShare, isPending: isAddingShare} = trpcReact.files.addShare.useMutation({
 		onSuccess: async () => {
 			await utils.files.shares.invalidate()
 		},
@@ -47,7 +42,7 @@ export function useShares() {
 	})
 
 	// Remove share mutation
-	const {mutateAsync: removeShare, isLoading: isRemovingShare} = trpcReact.files.unshare.useMutation({
+	const {mutateAsync: removeShare, isPending: isRemovingShare} = trpcReact.files.removeShare.useMutation({
 		onSuccess: async () => {
 			await utils.files.shares.invalidate()
 		},

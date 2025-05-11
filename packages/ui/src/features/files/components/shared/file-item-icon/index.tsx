@@ -1,4 +1,4 @@
-import React from 'react'
+import React, {useEffect, useState} from 'react'
 import {BsTrash2} from 'react-icons/bs'
 import {IoPlay} from 'react-icons/io5'
 
@@ -29,6 +29,7 @@ import {useShares} from '@/features/files/hooks/use-shares'
 import type {FileSystemItem} from '@/features/files/types'
 import {splitFileName} from '@/features/files/utils/format-filesystem-name'
 import {isDirectoryAnExternalDrivePartition} from '@/features/files/utils/is-directory-an-external-drive-partition'
+import {trpcReact} from '@/trpc/trpc'
 
 interface FileItemIcon {
 	item: FileSystemItem
@@ -88,7 +89,7 @@ export const FileItemIcon = ({item, onlySVG, className, useAnimatedIcon = false,
 	}
 
 	// Get the thumbnail component
-	const Thumbnail = FILE_TYPE_MAP[item.type as keyof typeof FILE_TYPE_MAP].thumbnail as React.ComponentType<{
+	const Thumbnail = FILE_TYPE_MAP[item.type as keyof typeof FILE_TYPE_MAP].thumbnail as unknown as React.ComponentType<{
 		className?: string
 	}>
 
@@ -134,23 +135,43 @@ const FolderIcon = ({
 	const FolderComponent = useAnimatedIcon ? AnimatedFolderIcon : SimpleFolderIcon
 
 	if (path === `${HOME_PATH}/Videos`) {
-		return <FolderComponent className={className} overlayIcon={VideosIcon} isHovered={isHovered} />
+		return useAnimatedIcon ? (
+			<FolderComponent className={className} overlayIcon={VideosIcon} isHovered={isHovered} />
+		) : (
+			<FolderComponent className={className} overlayIcon={VideosIcon} />
+		)
 	}
 	if (path === `${HOME_PATH}/Downloads`) {
-		return <FolderComponent className={className} overlayIcon={DownloadsIcon} isHovered={isHovered} />
+		return useAnimatedIcon ? (
+			<FolderComponent className={className} overlayIcon={DownloadsIcon} isHovered={isHovered} />
+		) : (
+			<FolderComponent className={className} overlayIcon={DownloadsIcon} />
+		)
 	}
 	if (path === `${HOME_PATH}/Documents`) {
-		return <FolderComponent className={className} overlayIcon={DocumentsIcon} isHovered={isHovered} />
+		return useAnimatedIcon ? (
+			<FolderComponent className={className} overlayIcon={DocumentsIcon} isHovered={isHovered} />
+		) : (
+			<FolderComponent className={className} overlayIcon={DocumentsIcon} />
+		)
 	}
 	if (path === `${HOME_PATH}/Photos`) {
-		return <FolderComponent className={className} overlayIcon={PhotosIcon} isHovered={isHovered} />
+		return useAnimatedIcon ? (
+			<FolderComponent className={className} overlayIcon={PhotosIcon} isHovered={isHovered} />
+		) : (
+			<FolderComponent className={className} overlayIcon={PhotosIcon} />
+		)
 	}
-	return <FolderComponent className={className} isHovered={isHovered} />
+	return useAnimatedIcon ? (
+		<FolderComponent className={className} isHovered={isHovered} />
+	) : (
+		<FolderComponent className={className} />
+	)
 }
 
 const AppFolderBottomIcon = ({appId}: {appId: string}) => {
-	const [error, setError] = React.useState(false)
-	const [loaded, setLoaded] = React.useState(false)
+	const [error, setError] = useState(false)
+	const [loaded, setLoaded] = useState(false)
 
 	return (
 		<img
@@ -165,57 +186,102 @@ const AppFolderBottomIcon = ({appId}: {appId: string}) => {
 	)
 }
 
-const ImageThumbnail = ({
-	item,
-	fallback: Fallback,
-	className,
-}: {
-	item: FileSystemItem
-	fallback: React.ComponentType<{className?: string}>
-	className?: string
-}) => {
-	const [error, setError] = React.useState(false)
+// Thumbnail component with on‑demand fetch
+function useOnDemandThumbnail(item: FileSystemItem) {
+	const [url, setUrl] = useState<string | undefined>(item.thumbnail)
 
-	if (error) {
-		return <Fallback className={className} />
-	}
+	const getThumbnailMutation = trpcReact.files.getThumbnail.useMutation()
 
-	return (
-		<img
-			src={`/api/files/thumbnail?path=${encodeURIComponent(item.path)}`}
-			alt={item.name}
-			onError={() => setError(true)}
-			className={`rounded-sm object-contain ${className || ''}`}
-		/>
-	)
+	// Reset state when the file item changes
+	useEffect(() => {
+		setUrl(item.thumbnail)
+	}, [item.path, item.thumbnail])
+
+	useEffect(() => {
+		if (url !== undefined) return
+
+		getThumbnailMutation.mutateAsync({path: item.path}).then((res) => {
+			if (res) {
+				setUrl(res)
+			}
+		})
+	}, [url, item.path])
+
+	return {thumbnailUrl: url}
 }
 
-const VideoThumbnail = ({
+const Thumbnail = ({
 	item,
 	fallback: Fallback,
+	className,
+	overlay,
+}: {
+	item: FileSystemItem
+	fallback: React.ComponentType<{className?: string}>
+	className?: string
+	overlay?: React.ReactNode
+}) => {
+	const {thumbnailUrl} = useOnDemandThumbnail(item)
+
+	// Track if the image failed to load so we can gracefully fall back to the
+	// default thumbnail component
+	const [hadError, setHadError] = useState(false)
+
+	// Reset the error flag whenever the thumbnail url or file changes
+	useEffect(() => {
+		setHadError(false)
+	}, [thumbnailUrl, item.path])
+
+	const imageNode =
+		thumbnailUrl && !hadError ? (
+			<img
+				src={thumbnailUrl}
+				alt={item.name}
+				onError={() => setHadError(true)}
+				className={`rounded-sm object-contain ${className || ''}`}
+			/>
+		) : null
+
+	const content = imageNode ?? <Fallback className={className} />
+
+	// Only display overlay when we have a real thumbnail to show
+	if (overlay && imageNode) {
+		return (
+			<div className='relative'>
+				{imageNode}
+				{overlay}
+			</div>
+		)
+	}
+
+	return content
+}
+
+// Image thumbnail
+const ImageThumbnail = (props: {
+	item: FileSystemItem
+	fallback: React.ComponentType<{className?: string}>
+	className?: string
+}) => <Thumbnail {...props} />
+
+// Video thumbnail
+const VideoThumbnail = ({
+	item,
+	fallback,
 	className,
 }: {
 	item: FileSystemItem
 	fallback: React.ComponentType<{className?: string}>
 	className?: string
-}) => {
-	const [error, setError] = React.useState(false)
-
-	if (error) {
-		return <Fallback className={className} />
-	}
-
-	return (
-		<div className='relative'>
-			<img
-				src={`/api/files/thumbnail?path=${encodeURIComponent(item.path)}`}
-				alt={item.name}
-				onError={() => setError(true)}
-				className={`rounded-sm object-contain ${className || ''}`}
-			/>
+}) => (
+	<Thumbnail
+		item={item}
+		fallback={fallback}
+		className={className}
+		overlay={
 			<div className='absolute left-1/2 top-1/2 flex h-full w-full -translate-x-1/2 -translate-y-1/2 items-center justify-center'>
 				<IoPlay className='h-1/3 w-1/3 text-white shadow-md' />
 			</div>
-		</div>
-	)
-}
+		}
+	/>
+)

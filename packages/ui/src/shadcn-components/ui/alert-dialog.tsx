@@ -114,7 +114,10 @@ const AlertDialogTitle = React.forwardRef<
 >(({className, ...props}, ref) => (
 	<AlertDialogPrimitive.Title
 		ref={ref}
-		className={cn('text-center text-17 font-semibold leading-snug -tracking-2', className)}
+		className={cn(
+			'whitespace-pre-line break-words text-center text-17 font-semibold leading-snug -tracking-2',
+			className,
+		)}
 		{...props}
 	/>
 ))
@@ -126,7 +129,10 @@ const AlertDialogDescription = React.forwardRef<
 >(({className, ...props}, ref) => (
 	<AlertDialogPrimitive.Description
 		ref={ref}
-		className={cn('text-13 font-normal leading-tight -tracking-2 text-white/40', className)}
+		className={cn(
+			'whitespace-pre-line break-words text-13 font-normal leading-tight -tracking-2 text-white/60',
+			className,
+		)}
 		{...props}
 	/>
 ))
@@ -134,11 +140,11 @@ AlertDialogDescription.displayName = AlertDialogPrimitive.Description.displayNam
 
 const AlertDialogAction = React.forwardRef<
 	React.ElementRef<typeof Button>,
-	React.ComponentPropsWithoutRef<typeof Button>
->(({variant, children, ...props}, ref) => (
+	React.ComponentPropsWithoutRef<typeof Button> & {hideEnterIcon?: boolean}
+>(({variant, hideEnterIcon, children, ...props}, ref) => (
 	<Button ref={ref} size={'dialog'} variant={variant ?? 'primary'} {...props}>
 		{children}
-		<span className='text-11 opacity-40 max-md:hidden'>↵</span>
+		{!hideEnterIcon && <span className='text-11 opacity-40 max-md:hidden'>↵</span>}
 	</Button>
 ))
 AlertDialogAction.displayName = 'AlertDialogAction'

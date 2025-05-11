@@ -1,26 +1,49 @@
-import {createTRPCProxyClient, createTRPCReact, httpLink, loggerLink, TRPCClientErrorLike} from '@trpc/react-query'
+import {
+	createTRPCClient,
+	createTRPCReact,
+	createWSClient,
+	httpLink,
+	loggerLink,
+	splitLink,
+	TRPCClientErrorLike,
+	wsLink,
+} from '@trpc/react-query'
 import {inferRouterInputs, inferRouterOutputs} from '@trpc/server'
 
 import {JWT_LOCAL_STORAGE_KEY} from '@/modules/auth/shared'
 import {IS_DEV} from '@/utils/misc'
 
-import type {AppRouter} from '../../../../packages/umbreld/source/modules/server/trpc/index'
+import {httpPaths, type AppRouter} from '../../../umbreld/source/modules/server/trpc/common'
 
-export const trpcUrl = `http://${location.hostname}:${location.port}/trpc`
+const {protocol, hostname, port} = location
+
+// do not pass colon when port is empty
+const portPart = port ? `:${port}` : ''
+const httpOrigin = `${protocol}//${hostname}${portPart}`
+
+// Some browsers now allow http(s):// schemes to be used in the websocket constructor and will silently rewrite to ws(s)://
+// but there are still some browsers, and older versions of now-compatible browsers, that will not do this:
+// https://caniuse.com/mdn-api_websocket_websocket_url_parameter_http_https_relative
+// So we explicitly build the websocket url with the correct scheme to maintain compatibility
+export const trpcHttpUrl = `${httpOrigin}/trpc`
+const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:'
+const trpcWsUrl = `${wsProtocol}//${hostname}${portPart}/trpc`
 
 // TODO: Getting jwt from `localStorage` like this means auth flow require a page refresh
+const getJwt = () => localStorage.getItem(JWT_LOCAL_STORAGE_KEY)
 export const links = [
 	loggerLink({
 		enabled: () => IS_DEV,
 	}),
-	httpLink({
-		url: trpcUrl,
-		headers: async () => {
-			const jwt = localStorage.getItem(JWT_LOCAL_STORAGE_KEY)
-			return {
-				Authorization: `Bearer ${jwt}`,
-			}
-		},
+	splitLink({
+		condition: (operation) => httpPaths.includes(operation.path as (typeof httpPaths)[number]),
+		true: httpLink({
+			url: trpcHttpUrl,
+			headers: () => ({Authorization: `Bearer ${getJwt()}`}),
+		}),
+		false: wsLink({
+			client: createWSClient({url: () => `${trpcWsUrl}?token=${getJwt()}`}),
+		}),
 	}),
 ]
 
@@ -29,7 +52,7 @@ export const trpcReact = createTRPCReact<AppRouter>()
 
 // Vanilla client
 /** Use sparingly */
-export const trpcClient = createTRPCProxyClient<AppRouter>({links})
+export const trpcClient = createTRPCClient<AppRouter>({links})
 
 // Types ----------------------------
 

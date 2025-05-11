@@ -19,6 +19,7 @@ export default router({
 			z.object({
 				name: z.string(),
 				password: z.string().min(6, 'Password must be at least 6 characters'),
+				language: z.string().optional().default('en'),
 			}),
 		)
 		.mutation(async ({ctx, input}) => {
@@ -28,7 +29,7 @@ export default router({
 			}
 
 			// Register new user
-			return ctx.user.register(input.name, input.password)
+			return ctx.user.register(input.name, input.password, input.language)
 		}),
 
 	// Public method to check if a user exists
@@ -65,7 +66,7 @@ export default router({
 			// Set proxy token cookie
 			const proxyToken = await ctx.server.signProxyToken()
 			const expires = new Date(Date.now() + ONE_WEEK)
-			ctx.response.cookie('UMBREL_PROXY_TOKEN', proxyToken, {
+			ctx.response!.cookie('UMBREL_PROXY_TOKEN', proxyToken, {
 				httpOnly: true,
 				expires,
 				sameSite: 'lax',
@@ -78,7 +79,7 @@ export default router({
 	// Checks if the request has a valid token
 	isLoggedIn: publicProcedure.query(async ({ctx}) => {
 		try {
-			const token = ctx.request.headers.authorization?.split(' ')[1]
+			const token = ctx.request!.headers.authorization?.split(' ')[1]
 			await ctx.server.verifyToken(token!)
 			return true
 		} catch {
@@ -91,7 +92,7 @@ export default router({
 		// Renew proxy token cookie
 		const proxyToken = await ctx.server.signProxyToken()
 		const expires = new Date(Date.now() + ONE_WEEK)
-		ctx.response.cookie('UMBREL_PROXY_TOKEN', proxyToken, {
+		ctx.response!.cookie('UMBREL_PROXY_TOKEN', proxyToken, {
 			httpOnly: true,
 			expires,
 			sameSite: 'lax',
@@ -104,7 +105,7 @@ export default router({
 	// Deletes the proxy token cookie
 	// The JWT needs to be deleted from the client side
 	logout: privateProcedure.mutation(async ({ctx}) => {
-		ctx.response.clearCookie('UMBREL_PROXY_TOKEN')
+		ctx.response!.clearCookie('UMBREL_PROXY_TOKEN')
 
 		// Return API token
 		return true
@@ -127,7 +128,7 @@ export default router({
 		}),
 
 	// Generates a new random 2FA TOTP URI
-	generateTotpUri: privateProcedure.query(() => totp.generateUri('Umbrel', 'getumbrel.com')),
+	generateTotpUri: privateProcedure.query(async () => totp.generateUri('Umbrel', 'getumbrel.com')),
 
 	// Enables 2FA
 	enable2fa: privateProcedure

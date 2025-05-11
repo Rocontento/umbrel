@@ -1,14 +1,13 @@
 import {Upload} from 'lucide-react'
-import {useRef} from 'react'
+import {useEffect, useRef} from 'react'
 import {RiClipboardLine} from 'react-icons/ri'
-import {useSearchParams} from 'react-router-dom'
 
 import {IconButton} from '@/components/ui/icon-button'
 import {AddFolderIcon} from '@/features/files/assets/add-folder-icon'
 import {Listing} from '@/features/files/components/listing'
+import {useSetActionsBarConfig} from '@/features/files/components/listing/actions-bar/actions-bar-context'
 import {EmptyStateDirectory} from '@/features/files/components/listing/directory-listing/empty-state'
 import {UploadInput} from '@/features/files/components/shared/upload-input'
-import {ITEMS_PER_PAGE} from '@/features/files/constants'
 import {useFilesOperations} from '@/features/files/hooks/use-files-operations'
 import {useListDirectory} from '@/features/files/hooks/use-list-directory'
 import {useNavigate} from '@/features/files/hooks/use-navigate'
@@ -20,14 +19,9 @@ import {DropdownMenuItem} from '@/shadcn-components/ui/dropdown-menu'
 import {t} from '@/utils/i18n'
 
 export function DirectoryListing() {
-	const [searchParams] = useSearchParams()
-	const currentPage = parseInt(searchParams.get('page') || '1')
-	const {currentPath} = useNavigate()
-
-	const {listing, isLoading, error} = useListDirectory(currentPath, {
-		start: (currentPage - 1) * ITEMS_PER_PAGE,
-		count: ITEMS_PER_PAGE,
-	})
+	const {currentPath, isBrowsingApps, isBrowsingExternalStorage, isViewingExternalDrives} = useNavigate()
+	const setActionsBarConfig = useSetActionsBarConfig()
+	const {listing, isLoading, error, fetchMoreItems} = useListDirectory(currentPath)
 
 	// Grab the potential "new folder" item from store
 	const newFolder = useFilesStore((state: FilesStore) => state.newFolder)
@@ -49,7 +43,7 @@ export function DirectoryListing() {
 	}
 
 	// Additional items for the directory context menu
-	const additionalContextMenuItems = (
+	const additionalContextMenuItems = isViewingExternalDrives ? null : (
 		<>
 			<ContextMenuItem onClick={startNewFolder}>{t('files-action.new-folder')}</ContextMenuItem>
 			<ContextMenuItem onClick={handleUploadClick}>{t('files-action.upload')}</ContextMenuItem>
@@ -70,7 +64,7 @@ export function DirectoryListing() {
 	const hidePathAndDisableActions = Boolean(isLoading || error)
 
 	// Desktop actions
-	const DesktopActions = (
+	const DesktopActions = isViewingExternalDrives ? null : (
 		<>
 			<IconButton icon={AddFolderIcon} onClick={startNewFolder} disabled={hidePathAndDisableActions}>
 				{t('files-folder')}
@@ -82,7 +76,7 @@ export function DirectoryListing() {
 	)
 
 	// Mobile actions
-	const MobileDropdownActions = (
+	const MobileDropdownActions = isViewingExternalDrives ? null : (
 		<>
 			<DropdownMenuItem onClick={startNewFolder} disabled={hidePathAndDisableActions}>
 				<AddFolderIcon className='mr-2 h-4 w-4 opacity-50' />
@@ -102,19 +96,29 @@ export function DirectoryListing() {
 		</>
 	)
 
+	useEffect(() => {
+		setActionsBarConfig({
+			desktopActions: DesktopActions,
+			mobileActions: MobileDropdownActions,
+			hidePath: hidePathAndDisableActions,
+			hideSearch: isBrowsingApps || isBrowsingExternalStorage, // hide search if browsing apps or external storage
+		})
+	}, [hidePathAndDisableActions, isBrowsingApps, isBrowsingExternalStorage, isViewingExternalDrives])
+
 	return (
 		<>
 			<UploadInput ref={uploadInputRef} />
 			<Listing
 				items={items}
+				totalItems={listing?.totalFiles}
+				truncatedAt={listing?.truncatedAt}
 				selectableItems={selectableItems}
 				isLoading={isLoading}
 				error={error}
-				totalItems={listing?.total ?? 0}
-				additionalDesktopActions={DesktopActions}
-				additionalMobileActions={MobileDropdownActions}
+				hasMore={listing?.hasMore ?? false}
+				onLoadMore={fetchMoreItems}
 				additionalContextMenuItems={additionalContextMenuItems}
-				enableFileDrop={true}
+				enableFileDrop={!isViewingExternalDrives}
 				CustomEmptyView={EmptyStateDirectory}
 			/>
 		</>
