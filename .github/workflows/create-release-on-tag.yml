@@ -7,7 +7,7 @@ on:
 
 jobs:
   create-release:
-    runs-on: 64-core-amd64
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: packages/os
