@@ -7,7 +7,7 @@ on:
 
 jobs:
   create-release:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: packages/os
@@ -53,22 +53,19 @@ jobs:
       - name: OpenTimestamps
         run: npm ci && npx ots-cli.js stamp release/SHA256SUMS
 
-      - name: Upload to R2
-        uses: ryand56/r2-upload-action@b801a390acbdeb034c5e684ff5e1361c06639e7c # v1.4
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
         with:
-          r2-account-id: ${{ secrets.R2_ACCOUNT_ID }}
-          r2-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
-          r2-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          r2-bucket: ${{ secrets.R2_BUCKET }}
-          source-dir: packages/os/release
-          destination-dir: ./${{ env.VERSION }}
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v0.1.15
+        uses: softprops/action-gh-release@v0.1.15
         with:
-          draft: true
+          draft: false # Cambiar a false para que el release no sea un borrador
           name: umbrelOS ${{ github.ref_name }}
           files: |
-            packages/os/release/SHA256SUMS*
-            packages/os/release/umbrelos-amd64.update
-            packages/os/release/umbrelos-amd64.img.xz
+            packages/os/release/*
