@@ -15,66 +15,43 @@ jobs:
       # Checkout
       - uses: actions/checkout@v3
 
-      # Build Docker images
+      # Set version and environment variables
       - run: echo "VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
-      # We need this to namespace Docker images on forks
       - run: echo "VERSION_IS_SEMVER=$(if [[ '${{ env.VERSION }}' =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then echo 'true'; else echo 'false'; fi)" >> $GITHUB_ENV
       - run: echo "PREFIX=$(if [ '${{ env.VERSION_IS_SEMVER }}' = 'true' ]; then echo ''; else echo $(basename ${{ github.repository }} | tr '[:upper:]' '[:lower:]')-; fi)" >> $GITHUB_ENV
       - run: echo "TAG=$(echo ${{ github.repository_owner }}/${{ env.PREFIX }}umbrelos:${{ env.VERSION }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      # Build Docker image for amd64
       - run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
       - run: docker buildx create --use
-      - run: docker buildx build --platform linux/amd64,linux/arm64 --file umbrelos.Dockerfile --tag ghcr.io/${{env.TAG }} --push ../../
+      - run: docker buildx build --platform linux/amd64 --file umbrelos.Dockerfile --tag ghcr.io/${{ env.TAG }} --push ../../
       - run: mkdir -p build && docker buildx imagetools inspect ghcr.io/${{ env.TAG }} > build/docker-umbrelos-${{ env.VERSION }}
 
-      # Build OS images
+      # Build OS image for amd64
       - uses: actions/setup-node@v3
         with:
           node-version: 18
-        # Awkward hack to run in parallel but correctly handle errors
-      - run: |
-          npm run build:amd64 &
-          pid1=$!
-          npm run build:arm64 &
-          pid2=$!
-          wait $pid1 || exit 1
-          wait $pid2 || exit 1
+      - run: npm run build:amd64
 
-      # TODO: Use .img.xz for all release assets once https://github.com/balena-io/etcher/issues/4064 is fixed
+      # Compress amd64 image
       - name: Compress release assets
-        # Awkward hack to run in parallel but correctly handle errors
         run: |
           cd build
-          zip umbrelos-pi4.img.zip umbrelos-pi4.img &
-          pid1=$!
-          zip umbrelos-pi5.img.zip umbrelos-pi5.img &
-          pid2=$!
-          sudo xz --keep --threads=0 umbrelos-amd64.img &
-          pid3=$!
-          wait $pid1 || exit 1
-          wait $pid2 || exit 1
-          wait $pid3 || exit 1
+          sudo xz --keep --threads=0 umbrelos-amd64.img
 
-      - name: Create USB installer
-        run: npm run build:amd64:usb-installer
-
+      # Create release directory with only required files
       - name: Create release directory
         run: |
           mkdir -p release
-          mv build/docker-umbrelos-* release/
-          mv build/*.update release/
-          mv build/*.img.zip release/
-          mv build/*.img.xz release/
-          mv build/*.img release/
-          mv usb-installer/build/*.iso release/
+          mv build/docker-umbrelos-${{ env.VERSION }} release/
+          mv build/umbrelos-amd64.update release/
+          mv build/umbrelos-amd64.img.xz release/
 
       - name: Create SHASUM
         run: cd release && shasum -a 256 * | tee SHA256SUMS
 
       - name: OpenTimestamps
         run: npm ci && npx ots-cli.js stamp release/SHA256SUMS
-
-      - name: Nuke uncompressed images (we just wanted them covered by the SHASUMs)
-        run: rm -rf release/*.img
 
       - name: Upload to R2
         uses: ryand56/r2-upload-action@b801a390acbdeb034c5e684ff5e1361c06639e7c # v1.4
@@ -93,3 +70,5 @@ jobs:
           name: umbrelOS ${{ github.ref_name }}
           files: |
             packages/os/release/SHA256SUMS*
+            packages/os/release/umbrelos-amd64.update
+            packages/os/release/umbrelos-amd64.img.xz
